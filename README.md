@@ -27,9 +27,11 @@ Who is using Ansistrano?
 
 Is Ansistrano ready to be used? Here are some companies currently using it:
 
-* Atrápalo: https://github.com/atrapalo (9K global alexa ranking)
-* Another Place Productions: http://www.anotherplaceproductions.com
+* [Atrápalo](http://www.atrapalo.com)
+* [Another Place Productions](http://www.anotherplaceproductions.com)
 * [Suntransfers](http://www.suntransfers.com)
+* [Ulabox](https://www.ulabox.com)
+* [Euromillions.com](http://euromillions.com/)
 
 If you are also using it, please let us know via a PR to this document.
 
@@ -90,13 +92,23 @@ Role Variables
   ansistrano_shared_paths: [] # Shared paths to symlink to release dir
   ansistrano_keep_releases: 0 # Releases to keep after a new deployment. See "Pruning old releases".
   ansistrano_deploy_via: "rsync" # Method used to deliver the code to the server. Options are copy, rsync, git or s3
+  
+  # Variables used in the rsync deployment strategy
   ansistrano_rsync_extra_params: "" # Extra parameters to use when deploying with rsync 
+  ansistrano_rsync_set_remote_user: yes # See [ansible synchronize module](http://docs.ansible.com/ansible/synchronize_module.html). Options are yes, no.
+  
+  # Variables used in the Git deployment strategy
   ansistrano_git_repo: git@github.com:USERNAME/REPO.git # Location of the git repository
-  ansistrano_git_branch: master # Branch to use when deploying
+  ansistrano_git_branch: master # What version of the repository to check out. This can be the full 40-character SHA-1 hash, the literal string HEAD, a branch name, or a tag name
   ansistrano_git_identity_key_path: "" # If specified this file is copied over and used as the identity key for the git commands, path is relative to the playbook in which it is used
+  
+  # Variables used in the S3 deployment strategy
   ansistrano_s3_bucket: s3bucket
   ansistrano_s3_object: s3object.tgz
   ansistrano_s3_region: eu-west-1
+  # Optional variables, omitted by default
+  ansistrano_s3_aws_access_key: YOUR_AWS_ACCESS_KEY
+  ansistrano_s3_aws_secret_key: YOUR_AWS_SECRET_KEY
 
   # Hooks: custom tasks if you need them
   ansistrano_before_setup_tasks_file: "{{ playbook_dir }}/<your-deployment-config>/my-before-setup-tasks.yml"
@@ -232,11 +244,10 @@ Variables in custom tasks
 
 When writing your custom tasks files you may need some variables that Ansistrano makes available to you:
 
-* ```{{ ansistrano_timestamp.stdout }}```: Timestamp for the current deployment (in UTC timezone)
 * ```{{ ansistrano_release_path.stdout }}```: Path to current deployment release (probably the one you are going to use the most)
 * ```{{ ansistrano_releases_path.stdout }}```: Path to releases folder
-* ```{{ ansistrano_shared_path.stdout }}```: Path to shared folder (where common releases assets can be stored)  
-* ```{{ ansistrano_release_version }}```: Directory name for the current deployment (by default equals to `{{ ansistrano_timestamp.stdout }}`)
+* ```{{ ansistrano_shared_path.stdout }}```: Path to shared folder (where common releases assets can be stored)
+* ```{{ ansistrano_release_version }}```: Relative directory name for the release (by default equals to the current timestamp in UTC timezone)
 
 Pruning old releases
 --------------------
@@ -357,6 +368,16 @@ skipping: [quepimquepam.com]
 PLAY RECAP ********************************************************************
 quepimquepam.com           : ok=14   changed=10   unreachable=0    failed=0
 ```
+
+They're talking about us
+------------------------
+
+* [http://www.ricardclau.com/2015/10/deploying-php-applications-with-ansistrano/](http://www.ricardclau.com/2015/10/deploying-php-applications-with-ansistrano/)
+* [http://es.slideshare.net/OrestesCA/ansible-intro-ansible-barcelona-user-group-june-2015](http://es.slideshare.net/OrestesCA/ansible-intro-ansible-barcelona-user-group-june-2015)
+* [http://carlosbuenosvinos.com/deploying-symfony-and-php-apps-with-ansistrano/](http://carlosbuenosvinos.com/deploying-symfony-and-php-apps-with-ansistrano/)
+* [https://www.youtube.com/watch?v=CPz5zPzzMZE](https://www.youtube.com/watch?v=CPz5zPzzMZE)
+* [https://github.com/cbrunnkvist/ansistrano-symfony-deploy](https://github.com/cbrunnkvist/ansistrano-symfony-deploy)
+* [https://www.reddit.com/r/ansible/comments/2ezzz5/rapid_rollback_with_ansible/](https://www.reddit.com/r/ansible/comments/2ezzz5/rapid_rollback_with_ansible/)
 
 License
 -------
