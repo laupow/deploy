@@ -1,7 +1,24 @@
 Ansistrano
 ==========
 
+[![Build Status](https://travis-ci.org/ansistrano/deploy.svg?branch=master)](https://travis-ci.org/ansistrano/deploy)
+
 **ansistrano.deploy** and **ansistrano.rollback** are Ansible roles to easily manage the deployment process for scripting applications such as PHP, Python and Ruby. It's an Ansible port for Capistrano.
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Update](#update)
+- [Features](#features)
+- [Main workflow](#main-workflow)
+- [Role Variables](#role-variables)
+- [Deploying](#deploying)
+- [Rolling back](#rolling-back)
+- [Multistage environment (devel, preprod, prod, etc.)](#multistage-environment-devel-preprod-prod-etc)
+- [Hooks: Custom tasks](#hooks-custom-tasks)
+- [Variables in custom tasks](#variables-in-custom-tasks)
+- [Pruning old releases](#pruning-old-releases)
+- [Example Playbook](#example-playbook)
+- [Sample projects](#sample-projects)
 
 History
 -------
@@ -17,31 +34,57 @@ Project name
 
 Ansistrano comes from Ansible + Capistrano, easy, isn't it?
 
-Early adopters
---------------
+BC Breaks in 2.0
+----------------
 
-If you were an early adopter, you should know we have broken BC by moving from using `ansistrano_custom_tasks_path` to individual and specific files per step. See "Role Variables". **The role displays a warning if the variable is defined and although your old playbooks may still run with no errors, you will see that your code is uploaded but custom tasks are not run.**
+* Minimum Ansible version supported is 1.9
+* `ansistrano_releases_path` and `ansistrano_shared_path` are now defined as defaults so if you use them in your hooks
+you should stop referring to the stdout string and just use the variable
 
 Ansistrano anonymous usage stats
 --------------------------------
 
 We have recently added an extra optional step in Ansistrano so that we can know how many people are deploying their applications with our project. Unfortunately, Ansible Galaxy does not provide any numbers on usage or downloads so this is one of the only ways we have to measure how many users we really have.
 
-You can check the code we use to store your anonyomus stats at [the ansistrano.com repo](https://github.com/ansistrano/ansistrano.com) and anyway, if you are not comfortable with this, you will always be able to disable this extra step by setting `ansistrano_allow_anonymous_stats` to false in your playbooks.
+You can check the code we use to store your anonymous stats at [the ansistrano.com repo](https://github.com/ansistrano/ansistrano.com) and anyway, if you are not comfortable with this, you will always be able to disable this extra step by setting `ansistrano_allow_anonymous_stats` to false in your playbooks.
 
 Who is using Ansistrano?
 ------------------------
 
 Is Ansistrano ready to be used? Here are some companies currently using it:
 
-* [Atrápalo](http://www.atrapalo.com)
+* [ABA English](http://www.abaenglish.com/)
 * [Another Place Productions](http://www.anotherplaceproductions.com)
-* [Suntransfers](http://www.suntransfers.com)
-* [Ulabox](https://www.ulabox.com)
-* [Euromillions.com](http://euromillions.com/)
-* [Uvinum](http://www.uvinum.com)
+* [Atrápalo](http://www.atrapalo.com)
+* [CMP Group](http://www.teamcmp.com)
+* [Cabissimo](https://www.cabissimo.com)
+* [Claranet France](http://www.claranet.fr/)
+* [Clearpoint](http://www.clearpoint.co.nz)
 * [Cycloid](http://www.cycloid.io)
+* [EnAlquiler](http://www.enalquiler.com/)
+* [Euromillions.com](http://euromillions.com/)
+* [Fluxus](http://www.fluxus.io/)
+* [Gstock](http://www.g-stock.es)
+* [HackSoft](https://hacksoft.io/)
+* [HackConf](https://hackconf.bg/en/)
+* [Hexanet](https://www.hexanet.fr)
+* [Holaluz](https://www.holaluz.com)
+* [Jolicode](http://jolicode.com/)
+* [Kidfund](http://link.kidfund.us/github "Kidfund")
+* [Moss](https://moss.sh)
+* [Nice&Crazy](http://www.niceandcrazy.com)
+* [Nodo Ámbar](http://www.nodoambar.com/)
+* [Oferplan](http://oferplan.com/)
+* [Ofertix](http://www.ofertix.com)
+* [OpsWay Software Factory](http://opsway.com)
 * [Spotahome](https://www.spotahome.com)
+* [Suntransfers](http://www.suntransfers.com)
+* [TechPump](http://www.techpump.com/)
+* [UNICEF Comité Español](https://www.unicef.es)
+* [Ulabox](https://www.ulabox.com)
+* [Uvinum](http://www.uvinum.com)
+* [Wavecontrol](http://monitoring.wavecontrol.com/ca/public/demo/)
+* [Yubl](https://yubl.me/)
 
 If you are also using it, please let us know via a PR to this document.
 
@@ -51,6 +94,7 @@ Requirements
 In order to deploy your apps with Ansistrano, you will need:
 
 * Ansible in your deployer machine
+* `rsync` on the target machine if you are using either the `rsync` or `git` deployment strategy or if you are using `ansistrano_current_via = rsync`
 
 Installation
 ------------
@@ -76,7 +120,7 @@ Features
 * Rollback in seconds (with ansistrano.rollback role)
 * Customize your deployment with hooks before and after critical steps
 * Save disk space keeping a maximum fixed releases in your hosts
-* Choose between SCP (push), RSYNC (push), GIT (pull) or S3 (get) deployment strategies
+* Choose between SCP, RSYNC, GIT, SVN, HG, HTTP Download or S3 GET deployment strategies (optional unarchive step included)
 
 Main workflow
 -------------
@@ -94,29 +138,76 @@ Role Variables
 --------------
 
 ```yaml
-- vars:
-  ansistrano_deploy_from: "./" # Where my local project is
+vars:
+  ansistrano_deploy_from: "{{ playbook_dir }}" # Where my local project is (relative or absolute path)
   ansistrano_deploy_to: "/var/www/my-app" # Base path to deploy to.
   ansistrano_version_dir: "releases" # Releases folder name
   ansistrano_current_dir: "current" # Softlink name. You should rarely changed it.
-  ansistrano_shared_paths: [] # Shared paths to symlink to release dir
+  ansistrano_current_via: "symlink" # Deployment strategy who code should be deployed to current path. Options are symlink or rsync
   ansistrano_keep_releases: 0 # Releases to keep after a new deployment. See "Pruning old releases".
-  ansistrano_deploy_via: "rsync" # Method used to deliver the code to the server. Options are copy, rsync, git or s3
+
+  # Arrays of directories and files to be shared.
+  # The following arrays of directories and files will be symlinked to the current release directory after the 'update-code' step and its callbacks
+  # Notes:
+  # * Paths are relative to the /shared directory (no starting /)
+  # * If your items are in a subdirectory, write the entire path to each shared directory
+  #
+  # Example:
+  # ansistrano_shared_paths:
+  #   - path/to/first-dir
+  #   - path/next-dir
+  # ansistrano_shared_files:
+  #   - my-file.txt
+  #   - path/to/file.txt
+  ansistrano_shared_paths: []
+  ansistrano_shared_files: []
+
+
+  # Shared paths and basedir shared files creation.
+  # By default the shared paths directories and base directories for shared files are created automatically if not exists. But in some scenarios those paths could be symlinks to another directories in the filesystem, and the deployment process would fails. With these variables you can disable the involved tasks. If you have two or three shared paths, and don't need creation only for some of them, you always could disable the automatic creation and add a custom task in a hook.
+  ansistrano_ensure_shared_paths_exist: yes
+  ansistrano_ensure_basedirs_shared_files_exist: yes
+
+  ansistrano_deploy_via: "rsync" # Method used to deliver the code to the server. Options are copy, rsync, git, svn, s3 or download. Copy, download and s3 have an optional step to unarchive the downloaded file which can be used by adding _unarchive. You can check all the options inside tasks/update-code folder!
   ansistrano_allow_anonymous_stats: yes
 
   # Variables used in the rsync deployment strategy
   ansistrano_rsync_extra_params: "" # Extra parameters to use when deploying with rsync in a single string. Although Ansible allows an array this can cause problems if we try to add multiple --include args as it was reported in https://github.com/ansistrano/deploy/commit/e98942dc969d4e620313f00f003a7ea2eab67e86
   ansistrano_rsync_set_remote_user: yes # See [ansible synchronize module](http://docs.ansible.com/ansible/synchronize_module.html). Options are yes, no.
+  ansistrano_rsync_path: "" # See [ansible synchronize module](http://docs.ansible.com/ansible/synchronize_module.html). By default is "sudo rsync", it can be overwriten with (example): "sudo -u user rsync".
 
   # Variables used in the Git deployment strategy
   ansistrano_git_repo: git@github.com:USERNAME/REPO.git # Location of the git repository
   ansistrano_git_branch: master # What version of the repository to check out. This can be the full 40-character SHA-1 hash, the literal string HEAD, a branch name, or a tag name
+  ansistrano_git_repo_tree: "" # If specified the subtree of the repository to deploy
   ansistrano_git_identity_key_path: "" # If specified this file is copied over and used as the identity key for the git commands, path is relative to the playbook in which it is used
+  # Optional variable, omitted by default
+  ansistrano_git_refspec: ADDITIONAL_GIT_REFSPEC # Additional refspec to be used by the 'git' module. Uses the same syntax as the 'git fetch' command.
+
+  # Variables used in the SVN deployment strategy
+  # Please note there was a bug in the subversion module in Ansible 1.8.x series (https://github.com/ansible/ansible-modules-core/issues/370) so it is only supported from Ansible 1.9
+  ansistrano_svn_repo: "https://svn.company.com/project" # Location of the svn repository
+  ansistrano_svn_branch: "trunk" # What branch from the repository to check out.
+  ansistrano_svn_revision: "HEAD" # What revision from the repository to check out.
+  ansistrano_svn_username: "user" # SVN authentication username
+  ansistrano_svn_password: "Pa$$word" # SVN authentication password
+  ansistrano_svn_environment: {} # Dict with environment variables for svn tasks (https://docs.ansible.com/ansible/playbooks_environment.html)
+
+  # Variables used in the HG deployment strategy
+  ansistrano_hg_repo: "https://USERNAME@bitbucket.org/USERNAME/REPO" # Location of the hg repo
+  ansistrano_hg_branch: "default" # Any branch identifier that works with hg -r, so named branch, bookmark, commit hash...
+
+  # Variables used in the download deployment strategy
+  ansistrano_get_url: https://github.com/someproject/somearchive.tar.gz
+  ansistrano_download_force_basic_auth: false # no default as this is only supported from Ansible 2.0
+  ansistrano_download_headers: "" # no default as this is only supported from Ansible 2.0
 
   # Variables used in the S3 deployment strategy
   ansistrano_s3_bucket: s3bucket
-  ansistrano_s3_object: s3object.tgz
+  ansistrano_s3_object: s3object.tgz # Add the _unarchive suffix to the ansistrano_deploy_via if your object is a package (ie: s3_unarchive)
   ansistrano_s3_region: eu-west-1
+  ansistrano_s3_rgw: false # must be Ansible >= 2.2. use Ceph RGW (when set true, ignore ansistrano_s3_region)
+  ansistrano_s3_url: http://rgw.example.com # when use Ceph RGW, set url
   # Optional variables, omitted by default
   ansistrano_s3_aws_access_key: YOUR_AWS_ACCESS_KEY
   ansistrano_s3_aws_secret_key: YOUR_AWS_SECRET_KEY
@@ -197,7 +288,7 @@ If you try to rollback with zero or one releases deployed, an error will be rais
 Variables you can tune in rollback role are less than in deploy one:
 
 ```yaml
-- vars:
+vars:
   ansistrano_deploy_to: "/var/www/my-app" # Base path to deploy to.
   ansistrano_version_dir: "releases" # Releases folder name
   ansistrano_current_dir: "current" # Softlink name. You should rarely changed it.
@@ -300,12 +391,25 @@ See how the release `20100509145325` has been removed.
 Example Playbook
 ----------------
 
-In the folder, `example` you can check an example project that shows how to deploy with Ansistrano. In order to run it, you should:
+In the folder, `example` you can check an example project that shows how to deploy a small application with Ansistrano.
+
+In order to run it, you will need to have Vagrant and the ansistrano roles installed. Please check https://www.vagrantup.com for more information about Vagrant and our Installation section.
 
 ```
-$ cd example
+$ cd example/my-playbook
+$ vagrant up
 $ ansible-playbook -i hosts deploy.yml
 ```
+
+And after running these commands, the index.html located in the `my-app` folder will be deployed to both vagrant boxes
+
+In order to test the rollback playbook, you will need to run deploy.yml at least twice (so that there is something to rollback to). And once this is done, you only need to run
+
+```
+$ ansible-playbook -i hosts rollback.yml
+```
+
+You can check more advanced examples inside the test folder which are run against Travis-CI
 
 Sample projects
 ---------------
@@ -383,12 +487,16 @@ quepimquepam.com           : ok=14   changed=10   unreachable=0    failed=0
 They're talking about us
 ------------------------
 
+* [Pablo Godel - Deploying Symfony - Symfony Cat 2016](https://youtu.be/K2bBhrkmpSg?t=26m)
+* [https://www.artansoft.com/2016/05/deploy-de-proyectos-php-ansistrano/](https://www.artansoft.com/2016/05/deploy-de-proyectos-php-ansistrano/)
+* [http://alexmoreno.net/ansistrano-deploying-drupal-ansible](http://alexmoreno.net/ansistrano-deploying-drupal-ansible)
 * [http://www.ricardclau.com/2015/10/deploying-php-applications-with-ansistrano/](http://www.ricardclau.com/2015/10/deploying-php-applications-with-ansistrano/)
 * [http://es.slideshare.net/OrestesCA/ansible-intro-ansible-barcelona-user-group-june-2015](http://es.slideshare.net/OrestesCA/ansible-intro-ansible-barcelona-user-group-june-2015)
 * [http://carlosbuenosvinos.com/deploying-symfony-and-php-apps-with-ansistrano/](http://carlosbuenosvinos.com/deploying-symfony-and-php-apps-with-ansistrano/)
 * [https://www.youtube.com/watch?v=CPz5zPzzMZE](https://www.youtube.com/watch?v=CPz5zPzzMZE)
 * [https://github.com/cbrunnkvist/ansistrano-symfony-deploy](https://github.com/cbrunnkvist/ansistrano-symfony-deploy)
 * [https://www.reddit.com/r/ansible/comments/2ezzz5/rapid_rollback_with_ansible/](https://www.reddit.com/r/ansible/comments/2ezzz5/rapid_rollback_with_ansible/)
+* [Cookiecutting Ansible for Django](https://hacksoft.io/blog/cookiecutting-django-ansible/)
 
 License
 -------
